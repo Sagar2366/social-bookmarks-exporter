@@ -30,12 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btnLinkedIn.disabled = true;
     liProgress.classList.add('active');
     showStopBtn('li', true);
-    setStatus(liStatus, 'Checking if you\'re on LinkedIn saved posts page...');
+    setStatus(liStatus, 'Checking if you\'re on LinkedIn...');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (!tab.url.includes('linkedin.com/my-items/saved-posts')) {
+      if (!tab.url.includes('linkedin.com')) {
         setStatus(liStatus, '⚠️ Please navigate to LinkedIn → My Items → Saved Posts first', 'error');
         chrome.tabs.update(tab.id, { url: 'https://www.linkedin.com/my-items/saved-posts/' });
         btnLinkedIn.disabled = false;
@@ -43,6 +43,22 @@ document.addEventListener('DOMContentLoaded', () => {
         showStopBtn('li', false);
         return;
       }
+
+      setStatus(liStatus, '💉 Injecting script into page...');
+
+      // Programmatic injection — doesn't rely on URL pattern matching
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['libs/xlsx.mini.min.js']
+      });
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content/linkedin.js']
+      });
+
+      // Give the script a moment to initialize
+      await new Promise(r => setTimeout(r, 500));
 
       setStatus(liStatus, '📜 Scrolling and collecting posts... please wait');
 
