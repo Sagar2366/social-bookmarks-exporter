@@ -5,11 +5,17 @@
   'use strict';
 
   let isRunning = false;
+  let stopRequested = false;
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'exportTwitter' && !isRunning) {
       isRunning = true;
+      stopRequested = false;
       exportTwitterBookmarks(msg.format);
+    } else if (msg.action === 'stopTwitter') {
+      stopRequested = true;
+    } else if (msg.action === 'recoverTwitter') {
+      recoverAndExport(msg.format);
     }
   });
 
@@ -31,6 +37,12 @@
     notify('progress', '🔄 Starting to scroll and collect bookmarks...');
 
     while (noNewContentCount < MAX_RETRIES) {
+      // Check if user requested stop
+      if (stopRequested) {
+        notify('progress', `🛑 Stop requested. Exporting ${tweets.size} bookmarks collected so far...`);
+        break;
+      }
+
       window.scrollTo(0, document.body.scrollHeight);
       scrollAttempt++;
 
@@ -57,6 +69,14 @@
           tweets.set(tweetData.id, tweetData);
         }
       });
+
+      // Auto-save to localStorage every 100 tweets for crash recovery
+      if (tweets.size > 0 && tweets.size % 100 < 5) {
+        try {
+          localStorage.setItem('__sbe_twitter_backup', JSON.stringify(Array.from(tweets.values())));
+          localStorage.setItem('__sbe_twitter_backup_time', new Date().toISOString());
+        } catch (e) { /* storage full, skip */ }
+      }
 
       const currentHeight = document.body.scrollHeight;
       if (tweets.size === prevSize && currentHeight === lastHeight) {
@@ -89,11 +109,32 @@
         '[data-testid="User-Name"] a[href^="/"]'
       );
 
-      // Tweet text
-      const textEl = element.querySelector(
-        '[data-testid="tweetText"], ' +
-        '[lang] span'
-      );
+      // Tweet text — be aggressive about getting the actual content
+      const textEl = element.querySelector('[data-testid="tweetText"]');
+      let text = '';
+      if (textEl) {
+        // Get full text including line breaks — innerText preserves them
+        text = textEl.innerText.trim();
+      } else {
+        // Fallback: find any element with lang attribute that has substantial text
+        const langEls = element.querySelectorAll('[lang]');
+        for (const el of langEls) {
+          const t = el.innerText.trim();
+          if (t.length > 20) { // Skip short labels, grab actual content
+            text = t;
+            break;
+          }
+        }
+      }
+
+      // If still no text, grab everything from the tweet body area
+      if (!text) {
+        const tweetBody = element.querySelector('[data-testid="tweet"] > div:nth-child(2)') ||
+                          element.querySelector('div[lang]');
+        if (tweetBody) {
+          text = tweetBody.innerText.trim();
+        }
+      }
 
       // Tweet link (for unique ID)
       const timeEl = element.querySelector('time');
@@ -114,7 +155,6 @@
       // Extract URL and use as dedup key
       const tweetUrl = tweetLinkEl ? tweetLinkEl.href : '';
       const tweetId = tweetUrl.match(/\/status\/(\d+)/)?.[1] || '';
-      const text = textEl ? textEl.innerText.trim() : '';
 
       if (!tweetId && !text) return null;
 
@@ -175,6 +215,45 @@
       notify('error', `Export failed: ${err.message}`);
     } finally {
       isRunning = false;
+    }
+  }
+
+  async function recoverAndExport(format) {
+    try {
+      const backup = localStorage.getItem('__sbe_twitter_backup');
+      const backupTime = localStorage.getItem('__sbe_twitter_backup_time');
+      if (!backup) {
+        notify('error', 'No backup found. Run the export first.');
+        return;
+      }
+      const tweets = JSON.parse(backup);
+      notify('progress', `🔄 Recovered ${tweets.length} bookmarks from backup (saved ${backupTime}). Exporting...`);
+
+      const exportData = tweets.map((t, i) => ({
+        '#': i + 1,
+        'Author': t.author,
+        'Handle': t.handle,
+        'Content': t.content,
+        'URL': t.url,
+        'Date': t.date,
+        'Replies': t.replies,
+        'Retweets': t.retweets,
+        'Likes': t.likes,
+        'Views': t.views,
+        'Media Type': t.media_type,
+      }));
+
+      if (format === 'json') {
+        downloadJSON(exportData, 'twitter-bookmarks-recovered');
+      } else if (format === 'csv') {
+        downloadCSV(exportData, 'twitter-bookmarks-recovered');
+      } else {
+        downloadExcel(exportData, 'twitter-bookmarks-recovered');
+      }
+
+      notify('done', '', tweets.length);
+    } catch (err) {
+      notify('error', `Recovery failed: ${err.message}`);
     }
   }
 

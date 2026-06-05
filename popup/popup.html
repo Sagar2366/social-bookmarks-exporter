@@ -117,6 +117,41 @@
     .instructions strong {
       color: #00d4ff;
     }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .btn-stop {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid #ff6b6b;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: #ff6b6b;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-stop:hover { background: #ff6b6b22; }
+    .btn-recover {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid #ffd43b;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: #ffd43b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-recover:hover { background: #ffd43b22; }
     .progress-bar {
       height: 3px;
       background: #0f3460;
@@ -159,6 +194,10 @@
     <button class="btn btn-linkedin" id="btn-linkedin">
       <span>Export LinkedIn Saved Posts</span>
     </button>
+    <div class="btn-row">
+      <button class="btn-stop" id="btn-stop-linkedin">⏹ Stop & Export Now</button>
+      <button class="btn-recover" id="btn-recover-linkedin">🔄 Recover Last Backup</button>
+    </div>
     <div class="progress-bar" id="li-progress"><div class="fill"></div></div>
     <div class="status" id="li-status"></div>
   </div>
@@ -179,6 +218,10 @@
     <button class="btn btn-twitter" id="btn-twitter">
       <span>Export Twitter Bookmarks</span>
     </button>
+    <div class="btn-row">
+      <button class="btn-stop" id="btn-stop-twitter">⏹ Stop & Export Now</button>
+      <button class="btn-recover" id="btn-recover-twitter">🔄 Recover Last Backup</button>
+    </div>
     <div class="progress-bar" id="tw-progress"><div class="fill"></div></div>
     <div class="status" id="tw-status"></div>
   </div>

@@ -5,11 +5,17 @@
   'use strict';
 
   let isRunning = false;
+  let stopRequested = false;
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'exportLinkedIn' && !isRunning) {
       isRunning = true;
+      stopRequested = false;
       exportLinkedInPosts(msg.format);
+    } else if (msg.action === 'stopLinkedIn') {
+      stopRequested = true;
+    } else if (msg.action === 'recoverLinkedIn') {
+      recoverAndExport(msg.format);
     }
   });
 
@@ -21,6 +27,36 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  function findScrollContainer() {
+    // LinkedIn uses a custom scroll container, NOT window scroll
+    // Try multiple known containers — they change these periodically
+    const candidates = [
+      document.querySelector('.scaffold-layout__main'),
+      document.querySelector('.scaffold-layout__content'),
+      document.querySelector('.scaffold-finite-scroll__content'),
+      document.querySelector('main.scaffold-layout__main'),
+      document.querySelector('[role="main"]'),
+      document.querySelector('.application-outlet'),
+      document.querySelector('.authentication-outlet'),
+      // Fallback: find the tallest scrollable div
+      ...Array.from(document.querySelectorAll('div')).filter(el => {
+        const style = window.getComputedStyle(el);
+        return (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+               el.scrollHeight > el.clientHeight &&
+               el.clientHeight > 300;
+      }).sort((a, b) => b.scrollHeight - a.scrollHeight)
+    ];
+
+    for (const el of candidates) {
+      if (el && el.scrollHeight > el.clientHeight) {
+        return el;
+      }
+    }
+
+    // Ultimate fallback — just use document.documentElement
+    return document.documentElement;
+  }
+
   async function autoScroll() {
     // For 7500+ posts, we need very patient scrolling
     const posts = new Map(); // Use Map to deduplicate by unique key
@@ -29,10 +65,20 @@
     let lastHeight = 0;
     let scrollAttempt = 0;
 
-    notify('progress', '🔄 Starting to scroll and collect posts...');
+    // Find LinkedIn's actual scroll container
+    const scrollEl = findScrollContainer();
+    notify('progress', `🔄 Found scroll container (${scrollEl.className.slice(0, 30) || scrollEl.tagName}). Starting collection...`);
 
     while (noNewContentCount < MAX_RETRIES) {
-      // Scroll down
+      // Check if user requested stop — export what we have so far
+      if (stopRequested) {
+        notify('progress', `🛑 Stop requested. Exporting ${posts.size} posts collected so far...`);
+        break;
+      }
+
+      // Scroll the ACTUAL container, not window
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+      // Also try window scroll as backup
       window.scrollTo(0, document.body.scrollHeight);
       scrollAttempt++;
 
@@ -63,8 +109,16 @@
         }
       });
 
+      // Auto-save to localStorage every 100 posts for crash recovery
+      if (posts.size > 0 && posts.size % 100 < 5) {
+        try {
+          localStorage.setItem('__sbe_linkedin_backup', JSON.stringify(Array.from(posts.values())));
+          localStorage.setItem('__sbe_linkedin_backup_time', new Date().toISOString());
+        } catch (e) { /* storage full, skip */ }
+      }
+
       // Check if we got new content
-      const currentHeight = document.body.scrollHeight;
+      const currentHeight = scrollEl.scrollHeight;
       if (posts.size === prevSize && currentHeight === lastHeight) {
         noNewContentCount++;
         // Try clicking "Show more results" or similar buttons
@@ -97,21 +151,58 @@
 
   function extractLinkedInPost(element) {
     try {
-      // Try multiple selectors since LinkedIn changes their DOM frequently
-      const textEl = element.querySelector(
-        '.feed-shared-update-v2__description, ' +
-        '.update-components-text, ' +
-        '.feed-shared-text, ' +
-        '.break-words span[dir="ltr"], ' +
-        '.feed-shared-inline-show-more-text'
-      );
+      // --- CONTENT: Be very aggressive about getting the post text ---
+      let text = '';
 
+      // Try known selectors first
+      const textSelectors = [
+        '.feed-shared-update-v2__description',
+        '.update-components-text',
+        '.feed-shared-text',
+        '.feed-shared-inline-show-more-text',
+        '.break-words',
+        '[dir="ltr"] span.break-words',
+        'span[dir="ltr"]',
+        '.feed-shared-text__text-view',
+      ];
+
+      for (const sel of textSelectors) {
+        const el = element.querySelector(sel);
+        if (el && el.innerText.trim().length > 20) {
+          text = el.innerText.trim();
+          break;
+        }
+      }
+
+      // Fallback: grab the largest text block in this element
+      if (!text) {
+        const allSpans = element.querySelectorAll('span, p, div');
+        let longest = '';
+        allSpans.forEach(el => {
+          const t = el.innerText.trim();
+          // Skip very short items (buttons/labels) and very long ones (whole container)
+          if (t.length > longest.length && t.length > 20 && t.length < 10000) {
+            longest = t;
+          }
+        });
+        text = longest;
+      }
+
+      // --- AUTHOR ---
       const authorEl = element.querySelector(
         '.update-components-actor__name span, ' +
         '.feed-shared-actor__name span, ' +
         '.entity-result__title-text a span, ' +
-        'span.feed-shared-actor__title span'
+        'span.feed-shared-actor__title span, ' +
+        'a[data-tracking-control-name*="actor"] span'
       );
+
+      // Fallback author: first strong or bold link text
+      let author = authorEl ? authorEl.innerText.trim() : '';
+      if (!author) {
+        const firstLink = element.querySelector('a span.visually-hidden, a strong, a[href*="/in/"] span');
+        if (firstLink) author = firstLink.innerText.trim();
+      }
 
       const linkEl = element.querySelector(
         'a[href*="/feed/update/"], ' +
@@ -137,14 +228,13 @@
 
       // Generate a unique ID from the content or link
       const postUrl = linkEl ? linkEl.href : '';
-      const text = textEl ? textEl.innerText.trim() : element.innerText.trim().substring(0, 500);
       const id = postUrl || text.substring(0, 100); // Deduplicate key
 
       if (!text && !postUrl) return null;
 
       return {
         id: id,
-        author: authorEl ? authorEl.innerText.trim() : 'Unknown',
+        author: author || 'Unknown',
         content: text.substring(0, 5000), // Cap individual post content
         url: postUrl,
         date: timeEl ? timeEl.innerText.trim() : '',
@@ -192,6 +282,41 @@
       notify('error', `Export failed: ${err.message}`);
     } finally {
       isRunning = false;
+    }
+  }
+
+  async function recoverAndExport(format) {
+    try {
+      const backup = localStorage.getItem('__sbe_linkedin_backup');
+      const backupTime = localStorage.getItem('__sbe_linkedin_backup_time');
+      if (!backup) {
+        notify('error', 'No backup found. Run the export first.');
+        return;
+      }
+      const posts = JSON.parse(backup);
+      notify('progress', `🔄 Recovered ${posts.length} posts from backup (saved ${backupTime}). Exporting...`);
+
+      const exportData = posts.map((p, i) => ({
+        '#': i + 1,
+        'Author': p.author,
+        'Content': p.content,
+        'URL': p.url,
+        'Date': p.date,
+        'Reactions': p.reactions,
+        'Comments': p.comments,
+      }));
+
+      if (format === 'json') {
+        downloadJSON(exportData, 'linkedin-saved-posts-recovered');
+      } else if (format === 'csv') {
+        downloadCSV(exportData, 'linkedin-saved-posts-recovered');
+      } else {
+        downloadExcel(exportData, 'linkedin-saved-posts-recovered');
+      }
+
+      notify('done', '', posts.length);
+    } catch (err) {
+      notify('error', `Recovery failed: ${err.message}`);
     }
   }
 
