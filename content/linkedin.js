@@ -269,10 +269,15 @@
         const spans = authorLink.closest('a').querySelectorAll('span');
         for (const s of spans) {
           const t = s.innerText.trim();
-          // Skip "View profile", connection degree, follower count
+          // Skip "View profile", connection degree, follower count, presence status
           if (t && t.length > 1 && t.length < 60 &&
               !t.includes('View') && !t.includes('follower') &&
-              !t.match(/^\d+(st|nd|rd|th)$/) && !t.includes('degree')) {
+              !t.match(/^\d+(st|nd|rd|th)$/) && !t.includes('degree') &&
+              !t.toLowerCase().includes('offline') &&
+              !t.toLowerCase().includes('online') &&
+              !t.toLowerCase().includes('status is') &&
+              !t.toLowerCase().includes('reachable') &&
+              !t.toLowerCase().includes('away')) {
             author = t;
             break;
           }
@@ -323,6 +328,9 @@
           /^•$/,
           /^Promoted$/i,
           /^Following$/i,
+          /^Status is/i,
+          /^offline$/i,
+          /^online$/i,
         ];
 
         for (let i = 0; i < Math.min(lines.length, 8); i++) {
