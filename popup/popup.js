@@ -16,13 +16,32 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setStatus(el, msg, type = '') {
+    if (!el) return;
     el.textContent = msg;
     el.className = `status ${type}`;
   }
 
   function showStopBtn(platform, show) {
     const btn = platform === 'li' ? btnStopLi : btnStopTw;
-    btn.style.display = show ? 'flex' : 'none';
+    if (btn) btn.style.display = show ? 'flex' : 'none';
+  }
+
+  // Helper to inject LinkedIn scripts
+  async function injectLinkedIn(tabId) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['libs/xlsx.mini.min.js']
+      });
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/linkedin.js']
+      });
+      return true;
+    } catch (err) {
+      console.error('Injection failed:', err);
+      return false;
+    }
   }
 
   btnLinkedIn.addEventListener('click', async () => {
@@ -35,8 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (!tab.url.includes('linkedin.com')) {
-        setStatus(liStatus, '⚠️ Please navigate to LinkedIn → My Items → Saved Posts first', 'error');
+      if (!tab.url || !tab.url.includes('linkedin.com')) {
+        setStatus(liStatus, '⚠️ Please navigate to LinkedIn Saved Posts first', 'error');
         chrome.tabs.update(tab.id, { url: 'https://www.linkedin.com/my-items/saved-posts/' });
         btnLinkedIn.disabled = false;
         liProgress.classList.remove('active');
@@ -46,19 +65,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       setStatus(liStatus, '💉 Injecting script into page...');
 
-      // Programmatic injection — doesn't rely on URL pattern matching
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['libs/xlsx.mini.min.js']
-      });
-
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content/linkedin.js']
-      });
+      const injected = await injectLinkedIn(tab.id);
+      if (!injected) {
+        setStatus(liStatus, '❌ Failed to inject script. Try refreshing the page.', 'error');
+        btnLinkedIn.disabled = false;
+        liProgress.classList.remove('active');
+        showStopBtn('li', false);
+        return;
+      }
 
       // Give the script a moment to initialize
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 800));
 
       setStatus(liStatus, '📜 Scrolling and collecting posts... please wait');
 
@@ -85,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (!tab.url.includes('/i/bookmarks')) {
+      if (!tab.url || !tab.url.includes('/i/bookmarks')) {
         setStatus(twStatus, '⚠️ Please navigate to X/Twitter Bookmarks first', 'error');
         chrome.tabs.update(tab.id, { url: 'https://x.com/i/bookmarks' });
         btnTwitter.disabled = false;
@@ -110,32 +127,43 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Stop buttons
-  btnStopLi.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.sendMessage(tab.id, { action: 'stopLinkedIn' });
-    setStatus(liStatus, '🛑 Stopping... will export what we have so far');
-  });
+  if (btnStopLi) {
+    btnStopLi.addEventListener('click', async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      chrome.tabs.sendMessage(tab.id, { action: 'stopLinkedIn' });
+      setStatus(liStatus, '🛑 Stopping... will export what we have so far');
+    });
+  }
 
-  btnStopTw.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.sendMessage(tab.id, { action: 'stopTwitter' });
-    setStatus(twStatus, '🛑 Stopping... will export what we have so far');
-  });
+  if (btnStopTw) {
+    btnStopTw.addEventListener('click', async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      chrome.tabs.sendMessage(tab.id, { action: 'stopTwitter' });
+      setStatus(twStatus, '🛑 Stopping... will export what we have so far');
+    });
+  }
 
   // Recover buttons
-  btnRecoverLi.addEventListener('click', async () => {
-    const format = getFormat('li-format');
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.sendMessage(tab.id, { action: 'recoverLinkedIn', format });
-    setStatus(liStatus, '🔄 Attempting recovery from last backup...');
-  });
+  if (btnRecoverLi) {
+    btnRecoverLi.addEventListener('click', async () => {
+      const format = getFormat('li-format');
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      // Need to inject first in case page was refreshed
+      await injectLinkedIn(tab.id);
+      await new Promise(r => setTimeout(r, 500));
+      chrome.tabs.sendMessage(tab.id, { action: 'recoverLinkedIn', format });
+      setStatus(liStatus, '🔄 Attempting recovery from last backup...');
+    });
+  }
 
-  btnRecoverTw.addEventListener('click', async () => {
-    const format = getFormat('tw-format');
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.sendMessage(tab.id, { action: 'recoverTwitter', format });
-    setStatus(twStatus, '🔄 Attempting recovery from last backup...');
-  });
+  if (btnRecoverTw) {
+    btnRecoverTw.addEventListener('click', async () => {
+      const format = getFormat('tw-format');
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      chrome.tabs.sendMessage(tab.id, { action: 'recoverTwitter', format });
+      setStatus(twStatus, '🔄 Attempting recovery from last backup...');
+    });
+  }
 
   // Listen for messages from content scripts
   chrome.runtime.onMessage.addListener((msg) => {

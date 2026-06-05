@@ -3,7 +3,7 @@
   "name": "Social Bookmarks Exporter",
   "version": "1.0.1",
   "description": "Export LinkedIn saved posts and Twitter/X bookmarks to Excel/CSV — no paid tools needed!",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://twitter.com/*",
