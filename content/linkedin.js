@@ -170,59 +170,83 @@
   }
 
   function findPostElements() {
-    // The saved posts page shows posts as cards in a list
-    // Try multiple approaches to find individual post containers
-
-    // Approach 1: Look for the feed container's direct children
-    let items = document.querySelectorAll(
-      '.scaffold-finite-scroll__content > div, ' +
-      '.artdeco-card, ' +
-      'div[data-urn], ' +
-      'div[data-id]'
+    // Each saved post has a "..." overflow menu button.
+    // Find those buttons and walk up to the post container.
+    const menuButtons = document.querySelectorAll(
+      'button[aria-label*="actions" i], ' +
+      'button[aria-label*="menu" i], ' +
+      'button[aria-label*="dismiss" i], ' +
+      'button[aria-label*="option" i]'
     );
 
-    if (items.length > 0) return items;
+    const postContainers = [];
 
-    // Approach 2: Find containers that have both an author link and post text
-    // On the saved posts page, each post is in a container with the "..." menu button
-    items = document.querySelectorAll('div:has(> div button[aria-label*="menu"]), div:has(> div button[aria-label*="More actions"])');
-    if (items.length > 0) return items;
-
-    // Approach 3: Find by the structure - each post has a profile image + text
-    // Look for containers that have an <img> (avatar) as a sibling to text content
-    const main = document.querySelector('main') || document.querySelector('[role="main"]');
-    if (main) {
-      // Get divs that contain a circular image (avatar) — likely post containers
-      items = main.querySelectorAll(':scope > div > div > div');
-      if (items.length > 2) return items;
-
-      // Even more generic
-      items = main.querySelectorAll('div.feed-shared-update-v2, div[class*="occludable"]');
-      if (items.length > 0) return items;
-    }
-
-    // Approach 4: Broadest — any div that contains time info (each post shows "3h", "1h", etc.)
-    const allDivs = document.querySelectorAll('div');
-    const postDivs = [];
-    allDivs.forEach(div => {
-      // Must have reasonable size (not tiny, not the whole page)
-      if (div.offsetHeight > 100 && div.offsetHeight < 800 &&
-          div.offsetWidth > 400 &&
-          div.querySelector('a[href*="/in/"], a[href*="/company/"]') &&
-          div.innerText.length > 50) {
-        // Check it's not nested inside another candidate
-        let isNested = false;
-        for (const existing of postDivs) {
-          if (existing.contains(div) || div.contains(existing)) {
-            isNested = true;
-            break;
+    menuButtons.forEach(btn => {
+      // Walk up to find the post container (usually 2-4 levels up)
+      let container = btn.parentElement;
+      for (let i = 0; i < 5; i++) {
+        if (!container || !container.parentElement) break;
+        container = container.parentElement;
+        // A good post container is reasonably sized
+        if (container.offsetHeight > 100 && container.offsetHeight < 1000 &&
+            container.offsetWidth > 300) {
+          // Check it has a profile link (author)
+          if (container.querySelector('a[href*="/in/"], a[href*="/company/"]')) {
+            // Make sure it's not the whole page or sidebar
+            const text = container.innerText || '';
+            if (text.length < 5000 && !text.includes('My Items')) {
+              postContainers.push(container);
+              break;
+            }
           }
         }
-        if (!isNested) postDivs.push(div);
       }
     });
 
-    return postDivs.length > 0 ? postDivs : document.querySelectorAll('.artdeco-list__item');
+    // Deduplicate — remove containers that contain each other
+    const unique = [];
+    for (const el of postContainers) {
+      let dominated = false;
+      for (let i = unique.length - 1; i >= 0; i--) {
+        if (unique[i].contains(el)) { dominated = true; break; }
+        if (el.contains(unique[i])) { unique.splice(i, 1); }
+      }
+      if (!dominated) unique.push(el);
+    }
+
+    // If that didn't work, try a different approach:
+    // Look for elements separated by <hr> or border-bottom in the main feed
+    if (unique.length < 2) {
+      const main = document.querySelector('main') || document.querySelector('[role="main"]');
+      if (main) {
+        // Find all direct-ish children that have profile links
+        const candidates = main.querySelectorAll('div');
+        const bySize = [];
+        candidates.forEach(div => {
+          if (div.offsetHeight > 120 && div.offsetHeight < 600 &&
+              div.offsetWidth > 350 &&
+              div.querySelector('a[href*="/in/"], a[href*="/company/"]') &&
+              !div.innerText.includes('My Items') &&
+              div.innerText.length > 40 && div.innerText.length < 3000) {
+            bySize.push(div);
+          }
+        });
+
+        // Filter to non-overlapping
+        const filtered = [];
+        for (const el of bySize) {
+          let dominated = false;
+          for (let i = filtered.length - 1; i >= 0; i--) {
+            if (filtered[i].contains(el)) { dominated = true; break; }
+            if (el.contains(filtered[i])) { filtered.splice(i, 1); }
+          }
+          if (!dominated) filtered.push(el);
+        }
+        if (filtered.length > 2) return filtered;
+      }
+    }
+
+    return unique;
   }
 
   function extractLinkedInPost(element) {
