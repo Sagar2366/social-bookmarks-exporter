@@ -53,6 +53,7 @@
     }
     .linkedin-color { color: #0a66c2; }
     .twitter-color { color: #1da1f2; }
+    .profile-color { color: #a855f7; }
     .btn {
       width: 100%;
       padding: 10px 16px;
@@ -77,6 +78,17 @@
       color: white;
     }
     .btn-twitter:hover { background: #0c85d0; }
+    .btn-profile {
+      background: #a855f7;
+      color: white;
+    }
+    .btn-profile:hover { background: #7c3aed; }
+    .mash-color { color: #10b981; }
+    .btn-mash {
+      background: #10b981;
+      color: white;
+    }
+    .btn-mash:hover { background: #059669; }
     .btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -202,6 +214,31 @@
     <div class="status" id="li-status"></div>
   </div>
 
+  <!-- LinkedMash Card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#10b981">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+      </svg>
+      <h2 class="mash-color">LinkedMash (All 7800+)</h2>
+    </div>
+    <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Export ALL saved posts via linkedmash.com/explore — no 1600 limit!</p>
+    <div class="format-select">
+      <label><input type="radio" name="mash-format" value="xlsx" checked> Excel (.xlsx)</label>
+      <label><input type="radio" name="mash-format" value="csv"> CSV</label>
+      <label><input type="radio" name="mash-format" value="json"> JSON</label>
+    </div>
+    <button class="btn btn-mash" id="btn-mash">
+      <span>Export from LinkedMash</span>
+    </button>
+    <div class="btn-row">
+      <button class="btn-stop" id="btn-stop-mash">⏹ Stop & Export Now</button>
+      <button class="btn-recover" id="btn-recover-mash">🔄 Recover Last Backup</button>
+    </div>
+    <div class="progress-bar" id="mash-progress"><div class="fill"></div></div>
+    <div class="status" id="mash-status"></div>
+  </div>
+
   <!-- Twitter Card -->
   <div class="card">
     <div class="card-header">
@@ -226,9 +263,34 @@
     <div class="status" id="tw-status"></div>
   </div>
 
+  <!-- Profile Export Card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#a855f7">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+      </svg>
+      <h2 class="profile-color">Profile Posts Exporter</h2>
+    </div>
+    <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Go to anyone's LinkedIn or Twitter profile → export all their posts</p>
+    <div class="format-select">
+      <label><input type="radio" name="pf-format" value="xlsx" checked> Excel (.xlsx)</label>
+      <label><input type="radio" name="pf-format" value="csv"> CSV</label>
+      <label><input type="radio" name="pf-format" value="json"> JSON</label>
+    </div>
+    <button class="btn btn-profile" id="btn-profile">
+      <span>Export Profile Posts</span>
+    </button>
+    <div class="btn-row">
+      <button class="btn-stop" id="btn-stop-profile">⏹ Stop & Export Now</button>
+      <button class="btn-recover" id="btn-recover-profile">🔄 Recover Last Backup</button>
+    </div>
+    <div class="progress-bar" id="pf-progress"><div class="fill"></div></div>
+    <div class="status" id="pf-status"></div>
+  </div>
+
   <div class="instructions">
     <strong>How to use:</strong><br>
-    1. Navigate to your LinkedIn Saved Posts or Twitter Bookmarks page<br>
+    1. Navigate to your LinkedIn Saved Posts, Twitter Bookmarks, or any profile page<br>
     2. Click the appropriate export button<br>
     3. The extension will auto-scroll and collect all posts<br>
     4. Download starts automatically when done!

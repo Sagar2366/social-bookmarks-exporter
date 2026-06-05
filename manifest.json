@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Social Bookmarks Exporter",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Export LinkedIn saved posts and Twitter/X bookmarks to Excel/CSV — no paid tools needed!",
   "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://twitter.com/*",
-    "https://x.com/*"
+    "https://x.com/*",
+    "https://www.linkedmash.com/*",
+    "https://linkedmash.com/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
