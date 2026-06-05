@@ -26,7 +26,18 @@
   }
 
   function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => {
+      const start = Date.now();
+      const check = () => {
+        if (Date.now() - start >= ms) resolve();
+        else setTimeout(check, 100);
+      };
+      setTimeout(check, ms);
+    });
+  }
+
+  function isTabActive() {
+    return !document.hidden;
   }
 
   function findScrollContainer() {
@@ -92,6 +103,24 @@
       if (stopRequested) {
         notify('progress', `🛑 Stop requested. Exporting ${posts.size} posts collected so far...`);
         break;
+      }
+
+      // Pause when tab is in background — scrollTo doesn't work in inactive tabs
+      if (!isTabActive()) {
+        await new Promise(resolve => {
+          const handler = () => {
+            if (!document.hidden) {
+              document.removeEventListener('visibilitychange', handler);
+              resolve();
+            }
+          };
+          document.addEventListener('visibilitychange', handler);
+          const interval = setInterval(() => {
+            if (!document.hidden) { clearInterval(interval); document.removeEventListener('visibilitychange', handler); resolve(); }
+          }, 2000);
+        });
+        noNewContentCount = 0;
+        await sleep(1000);
       }
 
       // Scroll down

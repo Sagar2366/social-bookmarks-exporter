@@ -27,7 +27,22 @@
   }
 
   function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    // Use a promise that won't be killed by tab throttling
+    return new Promise(resolve => {
+      const start = Date.now();
+      const check = () => {
+        if (Date.now() - start >= ms) {
+          resolve();
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      setTimeout(check, ms);
+    });
+  }
+
+  function isTabActive() {
+    return !document.hidden;
   }
 
   async function clickAllSeeMore() {
@@ -56,6 +71,34 @@
       if (stopRequested) {
         notify('progress', `🛑 Stop requested. Exporting ${posts.size} posts collected so far...`);
         break;
+      }
+
+      // If tab is in background, wait until it's active again
+      // Chrome throttles background tabs and scrollTo doesn't work
+      if (!isTabActive()) {
+        notify('progress', `⏸️ Tab inactive — waiting... (${posts.size} posts safe). Switch back to resume.`);
+        // Wait until tab becomes visible again
+        await new Promise(resolve => {
+          const handler = () => {
+            if (!document.hidden) {
+              document.removeEventListener('visibilitychange', handler);
+              resolve();
+            }
+          };
+          document.addEventListener('visibilitychange', handler);
+          // Safety fallback: check every 2s in case event doesn't fire
+          const interval = setInterval(() => {
+            if (!document.hidden) {
+              clearInterval(interval);
+              document.removeEventListener('visibilitychange', handler);
+              resolve();
+            }
+          }, 2000);
+        });
+        notify('progress', `▶️ Tab active again! Resuming scroll... (${posts.size} posts so far)`);
+        // Reset retry counter since we weren't actually failing
+        noNewContentCount = 0;
+        await sleep(1000);
       }
 
       // LinkedMash uses window scroll (standard page)
