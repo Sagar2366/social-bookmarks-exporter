@@ -31,15 +31,11 @@
 
   function findScrollContainer() {
     // LinkedIn uses a custom scroll container, NOT window scroll
-    // Try multiple known containers — they change these periodically
     const candidates = [
       document.querySelector('.scaffold-layout__main'),
       document.querySelector('.scaffold-layout__content'),
-      document.querySelector('.scaffold-finite-scroll__content'),
       document.querySelector('main.scaffold-layout__main'),
       document.querySelector('[role="main"]'),
-      document.querySelector('.application-outlet'),
-      document.querySelector('.authentication-outlet'),
       // Fallback: find the tallest scrollable div
       ...Array.from(document.querySelectorAll('div')).filter(el => {
         const style = window.getComputedStyle(el);
@@ -54,53 +50,73 @@
         return el;
       }
     }
-
-    // Ultimate fallback — just use document.documentElement
     return document.documentElement;
   }
 
+  // Click all "see more" buttons to expand truncated posts
+  async function expandAllPosts() {
+    const seeMoreButtons = document.querySelectorAll(
+      'button.see-more, ' +
+      'button[aria-label*="see more"], ' +
+      'button[aria-label*="See more"], ' +
+      '.feed-shared-inline-show-more-text button, ' +
+      'button.feed-shared-inline-show-more-text__button'
+    );
+
+    // Also find "...see more" spans that are clickable
+    const seeMoreSpans = document.querySelectorAll('span.inline-show-more-text__button, span[role="button"]');
+
+    const allButtons = [...seeMoreButtons, ...seeMoreSpans];
+
+    for (const btn of allButtons) {
+      if (btn.innerText && btn.innerText.toLowerCase().includes('see more')) {
+        try {
+          btn.click();
+          await sleep(100);
+        } catch (e) {}
+      }
+    }
+  }
+
   async function autoScroll() {
-    // For 7500+ posts, we need very patient scrolling
-    const posts = new Map(); // Use Map to deduplicate by unique key
+    const posts = new Map();
     let noNewContentCount = 0;
-    const MAX_RETRIES = 8; // Be extra patient - LinkedIn can be slow
+    const MAX_RETRIES = 8;
     let lastHeight = 0;
     let scrollAttempt = 0;
 
-    // Find LinkedIn's actual scroll container
     const scrollEl = findScrollContainer();
-    notify('progress', `🔄 Found scroll container (${scrollEl.className.slice(0, 30) || scrollEl.tagName}). Starting collection...`);
+    notify('progress', `🔄 Found scroll container. Starting collection...`);
 
     while (noNewContentCount < MAX_RETRIES) {
-      // Check if user requested stop — export what we have so far
       if (stopRequested) {
         notify('progress', `🛑 Stop requested. Exporting ${posts.size} posts collected so far...`);
         break;
       }
 
-      // Scroll the ACTUAL container, not window
+      // Scroll down
       scrollEl.scrollTop = scrollEl.scrollHeight;
-      // Also try window scroll as backup
       window.scrollTo(0, document.body.scrollHeight);
       scrollAttempt++;
 
-      // Wait for content to load - longer waits for reliability at scale
-      await sleep(2000 + Math.random() * 1000); // 2-3s random delay to look human
+      await sleep(2000 + Math.random() * 1000);
 
-      // Every 10 scrolls, take a longer breather to avoid rate limits
+      // Every 10 scrolls, expand "see more" and take a breather
       if (scrollAttempt % 10 === 0) {
+        await expandAllPosts();
         notify('progress', `⏳ Breathing... (${posts.size} posts collected so far)`);
         await sleep(3000 + Math.random() * 2000);
       }
 
-      // Collect visible posts
-      const postElements = document.querySelectorAll(
-        '.reusable-search__result-container, ' +
-        '.entity-result, ' +
-        '[data-chameleon-result-urn], ' +
-        '.scaffold-finite-scroll__content > div > div, ' +
-        '.artdeco-list__item'
-      );
+      // Expand "see more" every few scrolls to get full content
+      if (scrollAttempt % 3 === 0) {
+        await expandAllPosts();
+      }
+
+      // Find all post containers
+      // Based on the screenshot: posts are direct children in the feed area
+      // Each post card is separated by a horizontal line
+      const postElements = findPostElements();
 
       const prevSize = posts.size;
 
@@ -111,137 +127,247 @@
         }
       });
 
-      // Auto-save to localStorage every 100 posts for crash recovery
+      // Auto-save every 100 posts
       if (posts.size > 0 && posts.size % 100 < 5) {
         try {
           localStorage.setItem('__sbe_linkedin_backup', JSON.stringify(Array.from(posts.values())));
           localStorage.setItem('__sbe_linkedin_backup_time', new Date().toISOString());
-        } catch (e) { /* storage full, skip */ }
+        } catch (e) {}
       }
 
-      // Check if we got new content
       const currentHeight = scrollEl.scrollHeight;
       if (posts.size === prevSize && currentHeight === lastHeight) {
         noNewContentCount++;
-        // Try clicking "Show more results" or similar buttons
         const showMoreBtn = document.querySelector(
           'button.scaffold-finite-scroll__load-button, ' +
-          'button[aria-label*="more"], ' +
-          '.artdeco-loader'
+          'button[aria-label*="Show more"]'
         );
-        if (showMoreBtn && showMoreBtn.tagName === 'BUTTON') {
+        if (showMoreBtn) {
           showMoreBtn.click();
           await sleep(3000);
-          noNewContentCount = Math.max(0, noNewContentCount - 2); // Give it more chances
+          noNewContentCount = Math.max(0, noNewContentCount - 2);
         }
-        notify('progress', `⏳ Waiting for more content... (attempt ${noNewContentCount}/${MAX_RETRIES}, ${posts.size} posts so far)`);
+        notify('progress', `⏳ Waiting for more... (attempt ${noNewContentCount}/${MAX_RETRIES}, ${posts.size} posts)`);
         await sleep(3000);
       } else {
         noNewContentCount = 0;
         lastHeight = currentHeight;
       }
 
-      // Progress update every 50 posts
       if (posts.size % 50 < 5 && posts.size > 0) {
         notify('progress', `📊 Collected ${posts.size} posts so far... still scrolling`);
       }
     }
 
+    // Final save
+    try {
+      localStorage.setItem('__sbe_linkedin_backup', JSON.stringify(Array.from(posts.values())));
+      localStorage.setItem('__sbe_linkedin_backup_time', new Date().toISOString());
+    } catch (e) {}
+
     notify('progress', `✅ Scroll complete! Collected ${posts.size} posts. Preparing export...`);
     return Array.from(posts.values());
   }
 
+  function findPostElements() {
+    // The saved posts page shows posts as cards in a list
+    // Try multiple approaches to find individual post containers
+
+    // Approach 1: Look for the feed container's direct children
+    let items = document.querySelectorAll(
+      '.scaffold-finite-scroll__content > div, ' +
+      '.artdeco-card, ' +
+      'div[data-urn], ' +
+      'div[data-id]'
+    );
+
+    if (items.length > 0) return items;
+
+    // Approach 2: Find containers that have both an author link and post text
+    // On the saved posts page, each post is in a container with the "..." menu button
+    items = document.querySelectorAll('div:has(> div button[aria-label*="menu"]), div:has(> div button[aria-label*="More actions"])');
+    if (items.length > 0) return items;
+
+    // Approach 3: Find by the structure - each post has a profile image + text
+    // Look for containers that have an <img> (avatar) as a sibling to text content
+    const main = document.querySelector('main') || document.querySelector('[role="main"]');
+    if (main) {
+      // Get divs that contain a circular image (avatar) — likely post containers
+      items = main.querySelectorAll(':scope > div > div > div');
+      if (items.length > 2) return items;
+
+      // Even more generic
+      items = main.querySelectorAll('div.feed-shared-update-v2, div[class*="occludable"]');
+      if (items.length > 0) return items;
+    }
+
+    // Approach 4: Broadest — any div that contains time info (each post shows "3h", "1h", etc.)
+    const allDivs = document.querySelectorAll('div');
+    const postDivs = [];
+    allDivs.forEach(div => {
+      // Must have reasonable size (not tiny, not the whole page)
+      if (div.offsetHeight > 100 && div.offsetHeight < 800 &&
+          div.offsetWidth > 400 &&
+          div.querySelector('a[href*="/in/"], a[href*="/company/"]') &&
+          div.innerText.length > 50) {
+        // Check it's not nested inside another candidate
+        let isNested = false;
+        for (const existing of postDivs) {
+          if (existing.contains(div) || div.contains(existing)) {
+            isNested = true;
+            break;
+          }
+        }
+        if (!isNested) postDivs.push(div);
+      }
+    });
+
+    return postDivs.length > 0 ? postDivs : document.querySelectorAll('.artdeco-list__item');
+  }
+
   function extractLinkedInPost(element) {
     try {
-      // --- CONTENT: Be very aggressive about getting the post text ---
-      let text = '';
+      const innerText = element.innerText || '';
 
-      // Try known selectors first
-      const textSelectors = [
-        '.feed-shared-update-v2__description',
-        '.update-components-text',
-        '.feed-shared-text',
-        '.feed-shared-inline-show-more-text',
-        '.break-words',
-        '[dir="ltr"] span.break-words',
-        'span[dir="ltr"]',
-        '.feed-shared-text__text-view',
-      ];
+      // Skip if too short or looks like a navigation element
+      if (innerText.length < 30) return null;
+      if (innerText.includes('My Items') && innerText.includes('Job tracker')) return null;
 
-      for (const sel of textSelectors) {
-        const el = element.querySelector(sel);
-        if (el && el.innerText.trim().length > 20) {
-          text = el.innerText.trim();
-          break;
+      // --- AUTHOR ---
+      // The author is the first prominent link to a profile or company page
+      let author = '';
+      const authorLink = element.querySelector(
+        'a[href*="/in/"] span, ' +
+        'a[href*="/company/"] span'
+      );
+      if (authorLink) {
+        // Get the visible text (not hidden accessibility text)
+        const spans = authorLink.closest('a').querySelectorAll('span');
+        for (const s of spans) {
+          const t = s.innerText.trim();
+          // Skip "View profile", connection degree, follower count
+          if (t && t.length > 1 && t.length < 60 &&
+              !t.includes('View') && !t.includes('follower') &&
+              !t.match(/^\d+(st|nd|rd|th)$/) && !t.includes('degree')) {
+            author = t;
+            break;
+          }
         }
       }
 
-      // Fallback: grab the largest text block in this element
-      if (!text) {
-        const allSpans = element.querySelectorAll('span, p, div');
-        let longest = '';
-        allSpans.forEach(el => {
-          const t = el.innerText.trim();
-          // Skip very short items (buttons/labels) and very long ones (whole container)
-          if (t.length > longest.length && t.length > 20 && t.length < 10000) {
-            longest = t;
-          }
-        });
-        text = longest;
+      // If still no author, grab the first bold/strong text or first line
+      if (!author) {
+        const firstBold = element.querySelector('strong, span[class*="bold"], span[class*="weight--bold"]');
+        if (firstBold) author = firstBold.innerText.trim();
+      }
+      if (!author) {
+        // First line of innerText is usually the author
+        author = innerText.split('\n')[0].trim();
       }
 
-      // --- AUTHOR ---
-      const authorEl = element.querySelector(
-        '.update-components-actor__name span, ' +
-        '.feed-shared-actor__name span, ' +
-        '.entity-result__title-text a span, ' +
-        'span.feed-shared-actor__title span, ' +
-        'a[data-tracking-control-name*="actor"] span'
+      // --- CONTENT ---
+      // The post content comes AFTER the author block (name + subtitle + time)
+      // Strategy: split the innerText and grab everything after the time indicator
+      let content = '';
+
+      // Method 1: Look for specific content containers
+      const contentEl = element.querySelector(
+        '.feed-shared-text, ' +
+        '.update-components-text, ' +
+        '.feed-shared-update-v2__description, ' +
+        'div[class*="feed-shared-text"], ' +
+        'span[class*="break-words"]'
       );
 
-      // Fallback author: first strong or bold link text
-      let author = authorEl ? authorEl.innerText.trim() : '';
-      if (!author) {
-        const firstLink = element.querySelector('a span.visually-hidden, a strong, a[href*="/in/"] span');
-        if (firstLink) author = firstLink.innerText.trim();
+      if (contentEl) {
+        content = contentEl.innerText.trim();
       }
 
+      // Method 2: Parse from innerText by removing author/meta info
+      if (!content || content.length < 20) {
+        const lines = innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        // Find where the actual post content starts
+        // Skip: author name, subtitle (title/company), follower count, time, "Reposted from..."
+        let contentStartIdx = 0;
+        const skipPatterns = [
+          /^\d+[KkMm]?\s*followers?$/i,
+          /^\d+(st|nd|rd|th)$/,
+          /^\d+[hmdw]$/,         // time like "3h", "1d"
+          /^\d+\s*(hr|min|hour|day|week|month)/i,
+          /^Reposted from/i,
+          /^•$/,
+          /^Promoted$/i,
+          /^Following$/i,
+        ];
+
+        for (let i = 0; i < Math.min(lines.length, 8); i++) {
+          const line = lines[i];
+          // If this line IS the author or matches skip patterns, continue
+          if (line === author) { contentStartIdx = i + 1; continue; }
+          if (skipPatterns.some(p => p.test(line))) { contentStartIdx = i + 1; continue; }
+          // If line is short metadata (title, company name under author)
+          if (i < 4 && line.length < 80 && !line.includes('.') && !line.includes('!') && !line.includes('?')) {
+            contentStartIdx = i + 1;
+            continue;
+          }
+          // Found content
+          break;
+        }
+
+        // Everything from contentStartIdx onwards is the post content
+        // But stop at common footer patterns
+        const footerPatterns = [
+          /^Like$/, /^Comment$/, /^Repost$/, /^Send$/, /^Share$/,
+          /^\d+\s*likes?$/i, /^\d+\s*comments?$/i, /^\d+\s*reposts?$/i,
+          /^Report this/i, /^Save$/i, /^Unsave$/i,
+        ];
+
+        const contentLines = [];
+        for (let i = contentStartIdx; i < lines.length; i++) {
+          if (footerPatterns.some(p => p.test(lines[i]))) break;
+          // Skip "...see more" button text
+          if (lines[i] === '…see more' || lines[i] === '...see more') continue;
+          contentLines.push(lines[i]);
+        }
+
+        content = contentLines.join('\n');
+      }
+
+      // Clean up content
+      content = content.replace(/…see more$/g, '').replace(/\.\.\.see more$/g, '').trim();
+
+      // --- URL ---
       const linkEl = element.querySelector(
         'a[href*="/feed/update/"], ' +
-        'a[href*="/posts/"], ' +
-        'a[data-tracking-control-name]'
+        'a[href*="/posts/"]'
       );
-
-      const timeEl = element.querySelector(
-        'time, ' +
-        '.feed-shared-actor__sub-description span, ' +
-        'span.update-components-actor__sub-description'
-      );
-
-      const reactionsEl = element.querySelector(
-        '.social-details-social-counts__reactions-count, ' +
-        'span.reactions-count'
-      );
-
-      const commentsEl = element.querySelector(
-        'button[aria-label*="comment"], ' +
-        '.social-details-social-counts__comments'
-      );
-
-      // Generate a unique ID from the content or link
       const postUrl = linkEl ? linkEl.href : '';
-      const id = postUrl || text.substring(0, 100); // Deduplicate key
 
-      if (!text && !postUrl) return null;
+      // --- TIME ---
+      let date = '';
+      const timeEl = element.querySelector('time');
+      if (timeEl) {
+        date = timeEl.getAttribute('datetime') || timeEl.innerText.trim();
+      } else {
+        // Find time pattern like "3h", "1d", "2w"
+        const timeMatch = innerText.match(/\b(\d+[hmdw])\b/);
+        if (timeMatch) date = timeMatch[1];
+      }
+
+      // --- ID for deduplication ---
+      const id = postUrl || (author + '::' + content.substring(0, 80));
+
+      if (!content && !postUrl) return null;
 
       return {
         id: id,
         author: author || 'Unknown',
-        content: text.substring(0, 5000), // Cap individual post content
+        content: content.substring(0, 5000),
         url: postUrl,
-        date: timeEl ? timeEl.innerText.trim() : '',
-        reactions: reactionsEl ? reactionsEl.innerText.trim() : '',
-        comments: commentsEl ? commentsEl.innerText.trim().replace(/[^0-9]/g, '') : '',
+        date: date,
+        reactions: '',
+        comments: '',
       };
     } catch (e) {
       return null;
@@ -250,6 +376,11 @@
 
   async function exportLinkedInPosts(format) {
     try {
+      // First expand all visible "see more" buttons
+      notify('progress', '🔄 Expanding truncated posts...');
+      await expandAllPosts();
+      await sleep(1000);
+
       const posts = await autoScroll();
 
       if (posts.length === 0) {
@@ -260,15 +391,12 @@
 
       notify('progress', `📦 Preparing ${posts.length} posts for export as ${format.toUpperCase()}...`);
 
-      // Clean up the data for export (remove the dedup ID)
       const exportData = posts.map((p, i) => ({
         '#': i + 1,
         'Author': p.author,
         'Content': p.content,
         'URL': p.url,
         'Date': p.date,
-        'Reactions': p.reactions,
-        'Comments': p.comments,
       }));
 
       if (format === 'json') {
@@ -304,8 +432,6 @@
         'Content': p.content,
         'URL': p.url,
         'Date': p.date,
-        'Reactions': p.reactions,
-        'Comments': p.comments,
       }));
 
       if (format === 'json') {
@@ -324,22 +450,16 @@
 
   function downloadExcel(data, filename) {
     const ws = XLSX.utils.json_to_sheet(data);
-
-    // Set column widths for readability
     ws['!cols'] = [
       { wch: 5 },   // #
-      { wch: 25 },  // Author
-      { wch: 80 },  // Content
-      { wch: 50 },  // URL
-      { wch: 15 },  // Date
-      { wch: 10 },  // Reactions
-      { wch: 10 },  // Comments
+      { wch: 30 },  // Author
+      { wch: 100 }, // Content
+      { wch: 60 },  // URL
+      { wch: 12 },  // Date
     ];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Saved Posts');
-
-    // For 7500+ posts, we might need multiple sheets (Excel limit is ~1M rows, so we're fine)
     XLSX.writeFile(wb, `${filename}-${getDateStr()}.xlsx`);
   }
 
