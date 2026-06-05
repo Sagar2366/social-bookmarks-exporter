@@ -20,7 +20,9 @@
   });
 
   function notify(type, text, count) {
-    chrome.runtime.sendMessage({ source: 'twitter', type, text, count });
+    try {
+      chrome.runtime.sendMessage({ source: 'twitter', type, text, count }).catch(() => {});
+    } catch (e) { /* popup closed, keep running */ }
   }
 
   function sleep(ms) {
