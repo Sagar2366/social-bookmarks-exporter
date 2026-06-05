@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Social Bookmarks Exporter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      width: 380px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 18px;
+      margin-bottom: 4px;
+      color: #00d4ff;
+    }
+    .subtitle {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid #0f3460;
+      transition: border-color 0.2s;
+    }
+    .card:hover {
+      border-color: #00d4ff;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .card-header img {
+      width: 28px;
+      height: 28px;
+    }
+    .card-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .linkedin-color { color: #0a66c2; }
+    .twitter-color { color: #1da1f2; }
+    .btn {
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-linkedin {
+      background: #0a66c2;
+      color: white;
+    }
+    .btn-linkedin:hover { background: #004182; }
+    .btn-twitter {
+      background: #1da1f2;
+      color: white;
+    }
+    .btn-twitter:hover { background: #0c85d0; }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #aaa;
+      min-height: 16px;
+    }
+    .status.error { color: #ff6b6b; }
+    .status.success { color: #51cf66; }
+    .format-select {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+    }
+    .format-select label {
+      font-size: 11px;
+      color: #aaa;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .format-select input[type="radio"] {
+      accent-color: #00d4ff;
+    }
+    .instructions {
+      font-size: 11px;
+      color: #666;
+      margin-top: 16px;
+      line-height: 1.5;
+      padding: 10px;
+      background: #0f3460;
+      border-radius: 8px;
+    }
+    .instructions strong {
+      color: #00d4ff;
+    }
+    .progress-bar {
+      height: 3px;
+      background: #0f3460;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+      display: none;
+    }
+    .progress-bar.active { display: block; }
+    .progress-bar .fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00d4ff, #0a66c2);
+      width: 0%;
+      transition: width 0.3s;
+      animation: indeterminate 1.5s infinite linear;
+    }
+    @keyframes indeterminate {
+      0% { margin-left: -50%; width: 50%; }
+      100% { margin-left: 100%; width: 50%; }
+    }
+  </style>
+</head>
+<body>
+  <h1>📥 Social Bookmarks Exporter</h1>
+  <p class="subtitle">Export your saved posts — no paid tools needed</p>
+
+  <!-- LinkedIn Card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#0a66c2">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+      </svg>
+      <h2 class="linkedin-color">LinkedIn Saved Posts</h2>
+    </div>
+    <div class="format-select">
+      <label><input type="radio" name="li-format" value="xlsx" checked> Excel (.xlsx)</label>
+      <label><input type="radio" name="li-format" value="csv"> CSV</label>
+      <label><input type="radio" name="li-format" value="json"> JSON</label>
+    </div>
+    <button class="btn btn-linkedin" id="btn-linkedin">
+      <span>Export LinkedIn Saved Posts</span>
+    </button>
+    <div class="progress-bar" id="li-progress"><div class="fill"></div></div>
+    <div class="status" id="li-status"></div>
+  </div>
+
+  <!-- Twitter Card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#1da1f2">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+      </svg>
+      <h2 class="twitter-color">X (Twitter) Bookmarks</h2>
+    </div>
+    <div class="format-select">
+      <label><input type="radio" name="tw-format" value="xlsx" checked> Excel (.xlsx)</label>
+      <label><input type="radio" name="tw-format" value="csv"> CSV</label>
+      <label><input type="radio" name="tw-format" value="json"> JSON</label>
+    </div>
+    <button class="btn btn-twitter" id="btn-twitter">
+      <span>Export Twitter Bookmarks</span>
+    </button>
+    <div class="progress-bar" id="tw-progress"><div class="fill"></div></div>
+    <div class="status" id="tw-status"></div>
+  </div>
+
+  <div class="instructions">
+    <strong>How to use:</strong><br>
+    1. Navigate to your LinkedIn Saved Posts or Twitter Bookmarks page<br>
+    2. Click the appropriate export button<br>
+    3. The extension will auto-scroll and collect all posts<br>
+    4. Download starts automatically when done!
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
