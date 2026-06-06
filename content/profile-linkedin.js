@@ -52,9 +52,22 @@
       'h1.text-heading-xlarge, ' +
       'h1[class*="break-words"], ' +
       '.pv-top-card--list li:first-child, ' +
-      'div.ph5 h1'
+      'div.ph5 h1, ' +
+      'h1, ' +
+      'a[href*="/in/"] h1, ' +
+      '.scaffold-layout__aside h2'
     );
-    return nameEl ? nameEl.innerText.trim() : 'Unknown Profile';
+    if (nameEl && nameEl.innerText.trim().length > 1) {
+      return nameEl.innerText.trim();
+    }
+
+    // Fallback: extract from URL
+    const urlMatch = window.location.href.match(/\/in\/([^/]+)/);
+    if (urlMatch) {
+      return urlMatch[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    return 'Unknown Profile';
   }
 
   function findScrollContainer() {
