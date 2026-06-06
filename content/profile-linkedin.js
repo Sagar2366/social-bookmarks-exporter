@@ -26,7 +26,18 @@
   }
 
   function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => {
+      const start = Date.now();
+      const check = () => {
+        if (Date.now() - start >= ms) resolve();
+        else setTimeout(check, 100);
+      };
+      setTimeout(check, ms);
+    });
+  }
+
+  function isTabActive() {
+    return !document.hidden;
   }
 
   function getProfileName() {
@@ -41,24 +52,8 @@
   }
 
   function findScrollContainer() {
-    const candidates = [
-      document.querySelector('.scaffold-layout__main'),
-      document.querySelector('.scaffold-layout__content'),
-      document.querySelector('main.scaffold-layout__main'),
-      document.querySelector('[role="main"]'),
-      ...Array.from(document.querySelectorAll('div')).filter(el => {
-        const style = window.getComputedStyle(el);
-        return (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-               el.scrollHeight > el.clientHeight &&
-               el.clientHeight > 300;
-      }).sort((a, b) => b.scrollHeight - a.scrollHeight)
-    ];
-
-    for (const el of candidates) {
-      if (el && el.scrollHeight > el.clientHeight) {
-        return el;
-      }
-    }
+    // On activity/recent-activity pages, the page uses WINDOW scroll
+    // Just return document.documentElement — we'll also call window.scrollTo as backup
     return document.documentElement;
   }
 
@@ -136,9 +131,28 @@
         break;
       }
 
-      // Scroll down
-      scrollEl.scrollTop = scrollEl.scrollHeight;
+      // Pause when tab is in background
+      if (!isTabActive()) {
+        await new Promise(resolve => {
+          const handler = () => {
+            if (!document.hidden) {
+              document.removeEventListener('visibilitychange', handler);
+              resolve();
+            }
+          };
+          document.addEventListener('visibilitychange', handler);
+          const interval = setInterval(() => {
+            if (!document.hidden) { clearInterval(interval); document.removeEventListener('visibilitychange', handler); resolve(); }
+          }, 2000);
+        });
+        noNewContentCount = 0;
+        await sleep(1000);
+      }
+
+      // Scroll down — use multiple methods to ensure it works
       window.scrollTo(0, document.body.scrollHeight);
+      window.scrollBy(0, 1000);
+      document.documentElement.scrollTop = document.documentElement.scrollHeight;
       scrollAttempt++;
 
       await sleep(2000 + Math.random() * 1000);
