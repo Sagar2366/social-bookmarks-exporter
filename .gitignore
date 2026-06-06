@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (in case dependencies are added later)
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+
+# OS generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini

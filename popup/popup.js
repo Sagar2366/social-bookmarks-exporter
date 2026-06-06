@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       await new Promise(r => setTimeout(r, 800));
-      setStatus(mashStatus, '📜 Scrolling and collecting all 7863 posts...');
+      setStatus(mashStatus, '📜 Scrolling and collecting all posts...');
       chrome.tabs.sendMessage(tab.id, { action: 'exportLinkedInMash', format });
 
     } catch (err) {

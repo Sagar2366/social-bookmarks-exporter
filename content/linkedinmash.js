@@ -1,6 +1,6 @@
 // LinkedMash Saved Posts Exporter
 // Scrapes all saved posts from linkedmash.com/explore
-// Handles 7863+ posts with patient scrolling
+// Handles large collections (thousands of posts) with patient scrolling
 
 (function() {
   'use strict';
@@ -61,11 +61,11 @@
   async function autoScroll() {
     const posts = new Map();
     let noNewContentCount = 0;
-    const MAX_RETRIES = 10; // Extra patient for 7800+ posts
+    const MAX_RETRIES = 10; // Extra patient for large collections
     let lastHeight = 0;
     let scrollAttempt = 0;
 
-    notify('progress', `🔄 Starting to scroll linkedmash.com/explore (7863 posts)...`);
+    notify('progress', `🔄 Starting to scroll linkedmash.com/explore...`);
 
     while (noNewContentCount < MAX_RETRIES) {
       if (stopRequested) {
@@ -159,7 +159,7 @@
 
       // Progress updates
       if (posts.size % 100 < 10 && posts.size > 0) {
-        notify('progress', `📊 Collected ${posts.size}/7863 posts so far... still scrolling`);
+        notify('progress', `📊 Collected ${posts.size} posts so far... still scrolling`);
       }
     }
 
