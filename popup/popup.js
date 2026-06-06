@@ -144,6 +144,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (url.match(/linkedin\.com\/(in|company)\/[^/]+/)) {
         setStatus(pfStatus, '💉 Injecting LinkedIn profile scraper...');
 
+        // Clear any previous injection flag
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => { window.__sbe_profile_li_loaded = false; }
+        });
+
         const injected = await injectScripts(tab.id, ['libs/xlsx.mini.min.js', 'content/profile-linkedin.js']);
         if (!injected) {
           setStatus(pfStatus, '❌ Failed to inject. Try refreshing the page.', 'error');
@@ -153,9 +159,27 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(r => setTimeout(r, 1500));
         setStatus(pfStatus, '📜 Scrolling profile posts...');
-        chrome.tabs.sendMessage(tab.id, { action: 'exportProfileLinkedIn', format });
+
+        // Retry message sending in case script isn't ready
+        let sent = false;
+        for (let i = 0; i < 3; i++) {
+          try {
+            await chrome.tabs.sendMessage(tab.id, { action: 'exportProfileLinkedIn', format });
+            sent = true;
+            break;
+          } catch (e) {
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+
+        if (!sent) {
+          setStatus(pfStatus, '❌ Could not start. Refresh the page and try again.', 'error');
+          btnProfile.disabled = false;
+          pfProgress.classList.remove('active');
+          showStopBtn('pf', false);
+        }
 
       // Detect: Twitter/X profile
       } else if (url.match(/(?:twitter\.com|x\.com)\/[^/]+\/?$/) &&

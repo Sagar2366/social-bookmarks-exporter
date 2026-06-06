@@ -4,11 +4,16 @@
 (function() {
   'use strict';
 
+  // Prevent duplicate execution
+  if (window.__sbe_profile_li_loaded) return;
+  window.__sbe_profile_li_loaded = true;
+
   let isRunning = false;
   let stopRequested = false;
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.action === 'exportProfileLinkedIn' && !isRunning) {
+    if (msg.action === 'exportProfileLinkedIn') {
+      if (isRunning) return;
       isRunning = true;
       stopRequested = false;
       exportProfilePosts(msg.format);
@@ -17,6 +22,7 @@
     } else if (msg.action === 'recoverProfileLinkedIn') {
       recoverAndExport(msg.format);
     }
+    return true; // keep message channel open
   });
 
   function notify(type, text, count) {
